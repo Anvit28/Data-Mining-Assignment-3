@@ -1,4 +1,8 @@
-## Tree modeling: dengue cases
+## ECO 395M: Exercises 3
+
+## Group Members - Alina Khindanova, Anvit Sachdev, Shreya Kamble
+
+## Problem 2: Tree modeling: dengue cases
 
 Dataset: dengue.csv
 
@@ -38,9 +42,9 @@ model to make partial dependence plots.
 
 We obtain the following partial dependence plot for
 specific\_humidity:-  
-![](Assignment-3-Problem-1_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20specific_humidity-1.png)
+![](Assignment-3-Problem-2_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20specific_humidity-1.png)
 We obtain the following partial dependence plot for
 precipitation\_amt:-  
-![](Assignment-3-Problem-1_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20precipitation_amt-1.png)
+![](Assignment-3-Problem-2_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20precipitation_amt-1.png)
 We obtain the following partial dependence plot for avg\_temp\_k:-  
-![](Assignment-3-Problem-1_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20avg_temp_k-1.png)
+![](Assignment-3-Problem-2_files/figure-markdown_strict/2.partial%20dependence%20plot%20for%20avg_temp_k-1.png)

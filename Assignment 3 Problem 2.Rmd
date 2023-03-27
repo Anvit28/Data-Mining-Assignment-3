@@ -9,7 +9,9 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-## Tree modeling: dengue cases  
+## ECO 395M: Exercises 3  
+## Group Members - Alina Khindanova, Anvit Sachdev, Shreya Kamble  
+## Problem 2: Tree modeling: dengue cases  
 Dataset: dengue.csv   
 ```{r 2.loading libraries, echo=FALSE, message=FALSE, warning=FALSE}
 library(tidyverse)
