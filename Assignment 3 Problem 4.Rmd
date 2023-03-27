@@ -1,0 +1,166 @@
+---
+title: "Data Mining Assignment 3 Problem 4"
+author: ""
+date: ""
+output:
+  md_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Predictive model building: California housing    
+Dataset: CAhousing.csv   
+```{r 4.loading libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(splitTools)
+library(ranger)
+```
+```{r 4.reading dataset, echo=FALSE, message=FALSE, warning=FALSE}
+CAhousing = read.csv("https://raw.githubusercontent.com/jgscott/ECO395M/master/data/CAhousing.csv")
+#print(CAhousing)
+```
+Instead of using total rooms and total bedrooms, I am using average rooms per household and average Bedrooms per household (by diving totalRooms and totalBedrooms by households).   
+```{r 4.feature engineering, echo=FALSE, message=FALSE, warning=FALSE}
+CAhousing=na.omit(CAhousing)
+CAhousing$avg_rooms=CAhousing$totalRooms/CAhousing$households
+CAhousing$avg_bedrooms=CAhousing$totalBedrooms/CAhousing$households
+```
+Next, we split the data into training and test data. The training data comprises of 80% of overall data, and test data comprises of remaining 20% of the data. 
+```{r 4.partitioning data set into training and test data, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(3451)
+inds <- partition(CAhousing$medianHouseValue, p = c(train = 0.8, test = 0.2))
+train <- CAhousing[inds$train, ]
+test <- CAhousing[inds$test, ]
+train
+```
+```{r 4.defining the function that calculates root mean squared error, echo=FALSE, message=FALSE, warning=FALSE}
+rmse <- function(y, pred) {
+  sqrt(mean((y - pred)^2))
+}
+```
+I have performed k-fold (k=5) cross-validation on training set for tuning hyper parameters of the models.  
+```{r 4.creating folds for cross-validation of training set, echo=FALSE, message=FALSE, warning=FALSE}
+# Get stratified cross-validation in-sample indices
+folds <- create_folds(train$medianHouseValue, k = 5)
+rpart.grid <- expand.grid(.cp=0.2)
+```
+I tried CART, Random Forest and Gradient-Boosted Trees to predict the medianHouseValue.  
+We obtain the following RMSE values for CART, Random Forest and Gradient-Boosted Trees:-  
+```{r 4.Model 1: CART, echo=FALSE, message=FALSE, warning=FALSE}
+# loading libraries for CART
+library(rpart)
+library("rpart.plot")
+library(caret)
+library(mlr)
+```
+```{r 4.CART 2, echo=FALSE, message=FALSE, warning=FALSE}
+# using k-fold (k=5) cross-validation on training data to find the best maxdepth of CART.
+maxdepths=1:30
+for (i in maxdepths) {
+  cv_mtry <- numeric()
+  for (fold in folds) {
+    fit <- rpart(medianHouseValue ~ longitude + latitude + housingMedianAge + population + avg_bedrooms + avg_rooms + medianIncome,method="anova", data = train[fold, ], maxdepth=i)
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[-fold, "medianHouseValue"], predict(fit,train[fold,])))
+  }
+  maxdepths[i] <- mean(cv_mtry)
+}
+#maxdepths
+```
+```{r 4.CART 3, echo=FALSE, message=FALSE, warning=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+# finding the best hyper parameter (that gave the least RMSE)
+best_depth <- which.min(maxdepths)
+# checking RMSE of the CART model with the best hyper parameter on test data
+final_fit <- rpart(medianHouseValue ~ longitude + latitude + housingMedianAge + population + avg_bedrooms + avg_rooms + medianIncome,method="anova", data = train, maxdepth=best_depth)
+print(paste0("The RMSE of CART model on test data is: ", rmse(test$medianHouseValue, predict(final_fit, test))))
+```
+```{r 4.Random Forest 2, echo=FALSE, message=FALSE, warning=FALSE}
+# Random Forest Model is very computationally expensive, so we only used 5000 observations of training set
+final_fit <- ranger(medianHouseValue ~ longitude + latitude + housingMedianAge + population + avg_bedrooms + avg_rooms + medianIncome, data = train[1:5000,])
+print(paste0("The RMSE of Random Forest model on test data is: ",rmse(test$medianHouseValue, predict(final_fit, test)$predictions)))
+```
+```{r 4.Gradient Boosted Tree 1, echo=FALSE, message=FALSE, warning=FALSE}
+# loading library gbm
+library(gbm)
+```
+```{r 4.Gradient Boosted Tree 2, echo=FALSE, message=FALSE, warning=FALSE}
+# defining a grid that has different hyper parameters of the Gradient Boosted Tree
+hyper_grid <- expand.grid(
+  shrinkage = c(.01, .05),
+  interaction.depth = c(3, 5),
+  n.minobsinnode = c(5, 7),
+  bag.fraction = c(.65, 1), 
+  optimal_trees = 0,               # a place to dump results
+  RMSE = 0                     # a place to dump results
+)
+# using k-fold (k=5) cross-validation on training data to find the best hyper parameters of the Gradient Boosted Tree
+for(i in 1:nrow(hyper_grid)) {
+  for (fold in folds) {
+    gbm.tune <- gbm(
+    formula = medianHouseValue ~ longitude + latitude + housingMedianAge + population + avg_bedrooms + avg_rooms + medianIncome,
+    distribution = "gaussian",
+    data = train[fold,],
+    n.trees = 5000,
+    interaction.depth = hyper_grid$interaction.depth[i],
+    shrinkage = hyper_grid$shrinkage[i],
+    n.minobsinnode = hyper_grid$n.minobsinnode[i],
+    bag.fraction = hyper_grid$bag.fraction[i],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[-fold, "medianHouseValue"], predict(gbm.tune, train[-fold, ])))
+  }
+  hyper_grid$RMSE=mean(cv_mtry)
+}
+#hyper_grid$RMSE
+```
+```{r 4.Gradient Boosted Tree 3, echo=FALSE, message=FALSE, warning=FALSE}
+# finding the best hyper parameter (that gave the least RMSE)
+best_hyperparameter <- which.min(hyper_grid$RMSE)
+# checking RMSE of the Gradient Boosted Tree model with the best hyper parameter on test data
+final_fit <- gbm(
+    formula = medianHouseValue ~ longitude + latitude + housingMedianAge + population + avg_bedrooms + avg_rooms + medianIncome,
+    distribution = "gaussian",
+    data = train,
+    n.trees = 5000,
+    interaction.depth = hyper_grid$interaction.depth[best_hyperparameter],
+    shrinkage = hyper_grid$shrinkage[best_hyperparameter],
+    n.minobsinnode = hyper_grid$n.minobsinnode[best_hyperparameter],
+    bag.fraction = hyper_grid$bag.fraction[best_hyperparameter],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+print(paste0("The RMSE of Gradient Boosted Tree model on test data is: ",rmse(test$medianHouseValue, predict(final_fit, test))))
+```
+We can see that the Gradient Boosted Tree gives the least RMSE.  \
+We will now use this to make the respective plots. We obtain the following geometric polygons:-    
+```{r 4.loading librries for maps, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(ggmap)
+library(maps)
+library(mapdata)
+```
+1) log medianHouseValue V/S longitude (x) and latitude (y)  
+```{r log medianHouseValue V/S longitude (x) and latitude (y), echo=FALSE, message=FALSE, warning=FALSE}
+mi_counties <- map_data("county", "california") %>% 
+  select(lon = long, lat, group, id = subregion)
+#head(mi_counties)
+ggplot(mi_counties)+ geom_polygon(data = CAhousing, aes (x = longitude, y = latitude, color=log(medianHouseValue)))+coord_quickmap()+coord_fixed(1.3)
+```
+2) log predicted_medianHouseValue V/S longitude (x) and latitude (y)  
+```{r log predicted_medianHouseValue V/S longitude (x) and latitude (y), echo=FALSE, message=FALSE, warning=FALSE}
+predicted_medianHouseValue=predict(final_fit, CAhousing)
+#print(predicted_median_price)
+ggplot(mi_counties)+ geom_polygon(data = CAhousing, aes (x = longitude, y = latitude, color=log(predicted_medianHouseValue)))+coord_quickmap()+coord_fixed(1.3)
+```
+3) log AbsoluteResidual_medianHouseValue V/S longitude (x) and latitude (y)  
+```{r log AbsoluteResidual_medianHouseValue V/S longitude (x) and latitude (y), echo=FALSE, message=FALSE, warning=FALSE}
+AbsoluteResidual_medianHouseValue=abs(CAhousing$medianHouseValue - predicted_medianHouseValue)
+ggplot(mi_counties)+ geom_polygon(data = CAhousing, mapping=aes (x = longitude, y = latitude, color=log(AbsoluteResidual_medianHouseValue)))+coord_quickmap()+coord_fixed(1.3)
+```

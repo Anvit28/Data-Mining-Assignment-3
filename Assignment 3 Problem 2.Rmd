@@ -1,0 +1,193 @@
+---
+title: "Data Mining Assignment 3 Problem 2"
+author: ""
+date: ""
+output:
+  md_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Tree modeling: dengue cases  
+Dataset: dengue.csv   
+```{r 2.loading libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dplyr)
+library(caret)
+```
+```{r 2.reading data, echo=FALSE, message=FALSE, warning=FALSE}
+dengue = read.csv("https://raw.githubusercontent.com/jgscott/ECO395M/master/data/dengue.csv")
+#print(dengue)
+```
+The features of the dataset that I have used in the models are: city, season, precipitation_amt,air_temp,avg_temp_k,dew_point_temp_k,specific_humidity and tdtr_k.  
+```{r 2.removing null value observations from the dataset, echo=FALSE, message=FALSE, warning=FALSE}
+dengue=na.omit(dengue)
+```
+I have used one-hot encoding to deal with dummy variables of the data set.  
+```{r 2.one-hot encoding of the dummy variables, echo=FALSE, message=FALSE, warning=FALSE}
+dummy = dummyVars(" ~ .", data=dengue)
+dengue = data.frame(predict(dummy, newdata = dengue))
+#dengue
+```
+Since there are also many observations in the data set with zero dengue cases so using log dengue cases does not make sense. So we are predicting dengue cases.  
+```{r 2.loading library splitTools, echo=FALSE, message=FALSE, warning=FALSE}
+library(splitTools)
+```
+Next, we split the data into training and test data. The training data comprises of 80% of overall data, and test data comprises of remaining 20% of the data.  
+```{r 2.dividing the dataset into training and test set, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(3451)
+inds <- partition(dengue$total_cases, p = c(train = 0.8, test = 0.2))
+#str(inds)
+train <- dengue[inds$train, ]
+test <- dengue[inds$test, ]
+#train
+```
+```{r 2.defining the function that calculates root mean squared error, echo=FALSE, message=FALSE, warning=FALSE}
+rmse <- function(y, pred) {
+  sqrt(mean((y - pred)^2))
+}
+```
+I have performed k-fold (k=5) cross-validation on training set for tuning hyper parameters of the models.  
+```{r 2.creating folds for cross-validation of training set, echo=FALSE, message=FALSE, warning=FALSE}
+# Get stratified cross-validation in-sample indices
+folds <- create_folds(train$total_cases, k = 5)
+rpart.grid <- expand.grid(.cp=0.2)
+```
+We obtain the following RMSE values for CART, Random Forest and Gradient-Boosted Trees:-  
+```{r 2.CART 1, echo=FALSE, message=FALSE, warning=FALSE}
+# loading CART libraries
+library(rpart)
+library("rpart.plot")
+library(caret)
+library(mlr)
+```
+```{r 2.CART 2, echo=FALSE, message=FALSE, warning=FALSE}
+# using k-fold (k=5) cross-validation on training data to find the best maxdepth of CART.
+maxdepths=1:30
+for (i in maxdepths) {
+  cv_mtry <- numeric()
+  for (fold in folds) {
+    fit <- rpart(total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k,method="anova", data = train[fold, ], maxdepth=i)
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[-fold, "total_cases"], predict(fit,train[-fold,])))
+  }
+  maxdepths[i] <- mean(cv_mtry)
+}
+#maxdepths
+```
+```{r 2.CART 3, echo=FALSE, message=FALSE, warning=FALSE}
+# finding the best hyper parameter (that gave the least RMSE)
+best_depth <- which.min(maxdepths)
+# checking RMSE of the CART model with the best hyper parameter on test data
+final_fit <- rpart(total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k, data = train, method="anova",maxdepth=best_depth)
+print(paste0("The RMSE of CART model on test data is: ", rmse(test$total_cases, predict(final_fit, test))))
+```
+```{r 2.Random Forest 1, echo=FALSE, message=FALSE, warning=FALSE}
+# loading the ranger library
+library(ranger)
+```
+```{r 2.Random Forest 2, echo=FALSE, message=FALSE, warning=FALSE}
+# using k-fold (k=5) cross-validation on training data to find the best mtry (the number of variables to randomly sample as candidates at each split) of Random Forest.
+valid_mtry <- numeric(12)
+for (i in seq_along(valid_mtry)) {
+  cv_mtry <- numeric()
+  for (fold in folds) {
+    fit <- ranger(total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k, data = train[fold, ], mtry = i)
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[-fold, "total_cases"], predict(fit, train[-fold, ])$predictions))
+  }
+  valid_mtry[i] <- mean(cv_mtry)
+}
+#valid_mtry
+```
+```{r 2.Random Forest 3, echo=FALSE, message=FALSE, warning=FALSE}
+# finding the best hyper parameter (that gave the least RMSE)
+best_mtry <- which.min(valid_mtry)
+# checking RMSE of the random forest model with the best hyper parameter on test data
+final_fit <- ranger(total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k, data = train, mtry = best_mtry)
+print(paste0("The RMSE of Random Forest model on test data is: ",rmse(test$total_cases, predict(final_fit, test)$predictions)))
+```
+```{r 2.Gradient Boosted Trees 1, echo=FALSE, message=FALSE, warning=FALSE}
+# loading library gbm
+library(gbm)
+```
+```{r 2.Gradient Boosted Trees 2, echo=FALSE, message=FALSE, warning=FALSE}
+# defining a grid that has different hyper parameters of the Gradient Boosted Tree
+hyper_grid <- expand.grid(
+  shrinkage = c(.01, .05),
+  interaction.depth = c(3, 5),
+  n.minobsinnode = c(5, 7),
+  bag.fraction = c(.65, 1), 
+  optimal_trees = 0,               # a place to dump results
+  RMSE = 0                     # a place to dump results
+)
+# using k-fold (k=5) cross-validation on training data to find the best hyper parameters of the Gradient Boosted Tree
+for(i in 1:nrow(hyper_grid)) {
+  for (fold in folds) {
+    gbm.tune <- gbm(
+    formula = total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k,
+    distribution = "gaussian",
+    data = train[fold,],
+    n.trees = 5000,
+    interaction.depth = hyper_grid$interaction.depth[i],
+    shrinkage = hyper_grid$shrinkage[i],
+    n.minobsinnode = hyper_grid$n.minobsinnode[i],
+    bag.fraction = hyper_grid$bag.fraction[i],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+    cv_mtry <- c(cv_mtry, 
+                 rmse(train[-fold, "total_cases"], predict(gbm.tune, train[-fold, ])))
+  }
+  hyper_grid$RMSE=mean(cv_mtry)
+}
+hyper_grid$RMSE
+```
+```{r 2.Gradient Boosted Trees 3, echo=FALSE, message=FALSE, warning=FALSE}
+# finding the best hyper parameter (that gave the least RMSE)
+best_hyperparameter <- which.min(hyper_grid$RMSE)
+# checking RMSE of the Gradient Boosted Tree model with the best hyper parameter on test data
+final_fit <- gbm(
+    formula = total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k,
+    distribution = "gaussian",
+    data = train,
+    n.trees = 5000,
+    interaction.depth = hyper_grid$interaction.depth[best_hyperparameter],
+    shrinkage = hyper_grid$shrinkage[best_hyperparameter],
+    n.minobsinnode = hyper_grid$n.minobsinnode[best_hyperparameter],
+    bag.fraction = hyper_grid$bag.fraction[best_hyperparameter],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+print(paste0("The RMSE of Gradient Boosted Tree model on test data is: ",rmse(test$total_cases, predict(final_fit, test))))
+```
+We can see that Random Forest performs the best. We will now use this model to make partial dependence plots.  
+```{r 2.loading libraries for partial dependence plots, echo=FALSE, message=FALSE, warning=FALSE}
+library(pdp)
+library(ggplot2)
+library(gridExtra)
+```
+We obtain the following partial dependence plot for specific_humidity:-    
+```{r 2.partial dependence plot for specific_humidity, echo=FALSE, message=FALSE, warning=FALSE} 
+final_fit <- ranger(total_cases ~ cityiq + citysj + seasonfall + seasonspring + seasonsummer + seasonwinter + precipitation_amt+air_temp_k+avg_temp_k+dew_point_temp_k+specific_humidity+tdtr_k, data = train, mtry = best_mtry)
+par <- partial(final_fit, pred.var = c("specific_humidity"), chull = TRUE)
+plot_1 <- autoplot(par, contour = TRUE)
+grid.arrange(plot_1)
+```
+We obtain the following partial dependence plot for precipitation_amt:-  
+```{r 2.partial dependence plot for precipitation_amt, echo=FALSE, message=FALSE, warning=FALSE}
+par <- partial(final_fit, pred.var = c("precipitation_amt"), chull = TRUE)
+plot_2 <- autoplot(par, contour = TRUE)
+grid.arrange(plot_2)
+```
+We obtain the following partial dependence plot for avg_temp_k:-  
+```{r 2.partial dependence plot for avg_temp_k, echo=FALSE, message=FALSE, warning=FALSE}
+par <- partial(final_fit, pred.var = c("avg_temp_k"), chull = TRUE)
+plot_3 <- autoplot(par, contour = TRUE)
+grid.arrange(plot_3)
+```
+
+
