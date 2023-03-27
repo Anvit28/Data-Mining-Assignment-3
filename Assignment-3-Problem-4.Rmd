@@ -36,7 +36,7 @@ set.seed(3451)
 inds <- partition(CAhousing$medianHouseValue, p = c(train = 0.8, test = 0.2))
 train <- CAhousing[inds$train, ]
 test <- CAhousing[inds$test, ]
-#train
+train
 ```
 ```{r 4.defining the function that calculates root mean squared error, echo=FALSE, message=FALSE, warning=FALSE}
 rmse <- function(y, pred) {
