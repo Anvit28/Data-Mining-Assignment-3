@@ -1,0 +1,108 @@
+---
+title: "Problem Set 3- Q3"
+author: "Shreya"
+date: "2023-03-26"
+output:
+  md_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+## Group Members - Alina Khindanova, Anvit Sachdev, Shreya Kamble  
+## Problem 3: Predictive Modelling- Green Certification
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(tidyverse)
+library(lubridate)
+library(randomForest)
+library(gbm)
+library(pdp)
+library(modelr)
+library(rsample)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(textir)
+library(corrplot)
+library(gridExtra)
+library(GGally)
+library(e1071)
+library(ggthemes)
+library(scales)
+library(class) 
+library(ggmap)
+greenbuildings <- read.csv("C:/Users/shrey/Downloads/greenbuildings.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+set.seed(485)
+greenbuildings$renovated = factor(greenbuildings$renovated)
+greenbuildings$class_a = factor(greenbuildings$class_a)
+greenbuildings$class_b = factor(greenbuildings$class_b)
+greenbuildings$LEED = factor(greenbuildings$LEED)
+greenbuildings$Energystar = factor(greenbuildings$Energystar)
+greenbuildings$green_rating = factor(greenbuildings$green_rating)
+greenbuildings$net = factor(greenbuildings$net)
+greenbuildings$amenities = factor(greenbuildings$amenities)
+
+greenbuildings1 = greenbuildings %>%
+  mutate(revenue = Rent*leasing_rate)
+set.seed(485)
+greenbuildings1_split =  initial_split(greenbuildings1, prop=0.8)
+greenbuildings1_split_train = training(greenbuildings1_split)
+greenbuildings1_split_test  = testing(greenbuildings1_split)
+
+
+```
+
+I tried out four different machine learning models to see which one would make the best predictions. Three of them were random forests and the other one was a gradient boosting model.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(485)
+forest_green = randomForest(revenue ~ . ,
+                       data=greenbuildings1_split_train, na.action = na.exclude)
+
+varImpPlot(forest_green)
+  rmse_green1 = modelr::rmse(forest_green, greenbuildings1_split_test)
+  
+  set.seed(485)
+  forest_green2 = randomForest(revenue ~ Rent + City_Market_Rent + leasing_rate + Electricity_Costs + size + CS_PropertyID + stories + age + green_rating  ,
+                       data=greenbuildings1_split_train, na.action = na.exclude)
+  
+  rmse_green2 = modelr::rmse(forest_green2, greenbuildings1_split_test)  
+  
+  
+    set.seed(485)
+  forest_green3 = randomForest(revenue ~ Rent + City_Market_Rent + leasing_rate + Electricity_Costs + size + CS_PropertyID + stories + age + hd_total07  + total_dd_07 + total_dd_07 + green_rating,
+                       data=greenbuildings1_split_train, na.action = na.exclude)
+  rmse_green3 = modelr::rmse(forest_green3, greenbuildings1_split_test)  
+  
+boost_green = gbm(revenue ~ Rent + City_Market_Rent + leasing_rate + Electricity_Costs + size + CS_PropertyID + stories +green_rating, 
+             data = greenbuildings1_split_train,
+             interaction.depth=4, n.trees=350, shrinkage=.02)
+  rmse_green4 = modelr::rmse(boost_green, greenbuildings1_split_test)  
+  
+  
+models_green_summary = data.frame(
+RFM1_rmse = rmse_green1,
+RFM2_rmse = rmse_green2,
+RFM3_rmse = rmse_green3,
+Boost_rmse = rmse_green4)
+models_green_summary
+  yhat_green_gbm = predict(boost_green, greenbuildings1_split_test, n.trees=350)
+```
+Now I'm going to see how the green rating changes based on the optimal machine learning model that I found earlier. I'm going to do this by checking the partial dependence of the green rating. This means I'll look at how the green rating changes when I change other variables in the model.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+  plot(boost_green, 'green_rating')
+  
+  p4 = pdp::partial(boost_green, pred.var = 'green_rating', n.trees=350)
+p4
+```
+The goal of this exercise is to figure out how much money commercial rental properties make per square foot each year, and whether having a green certification helps them make more money. To do this, I have mutated a new column to calculate the revenue per square foot per calender year based on the original data. I also made sure that some of the variables were dummy variables.
+Then, I split the data into two parts: one to train the computer on how to predict revenue, and another to test how well it did. I used a machine learning technique called random forest to make the prediction. The first model used all the variables, and then I checked which ones were most important so I could make other models and compare them. I wanted to see which model would give the most accurate predictions.
+
+Based on the importance of the variables in the first model, I made two more models to see which one would give the best predictions. Even though the green rating wasn't very important in the model, I still included it to check the real effect using a special algorithm.The second model used 9 variables with different levels of importance, while the third model used 12 variables, including some that were not very important. I also checked the RMSE for each model and compared them to the first model. The second model had a slightly lower RMSE than the first model, which is good, but we want to find the best possible model. So, I tried a different type of machine learning called gradient boosting, using the same variables as the second model. I want to see if this will give even better predictions.
+
+So, I tried different shrinkage rates to see which one works best to predict revenue for rental properties, and found that the gradient boosting model works better than the random forest models.I was able to make a model that is better than the 2nd model by reducing the error rate to 108, while the best random forest model had an error rate of 148. In other words, my new model is better at predicting the revenue per square foot of the commercial rental properties.When I checked the effect of green certification on the revenue, I found out that it doesn't really make a difference whether a property is certified green or not. This means that even if a property has a green certification from LEED or Energystar, it won't necessarily bring in more revenue. I did this by predicting the average revenue for both certified and non-certified properties, and found that the values are almost the same. The graph also confirms this.
